@@ -80,6 +80,25 @@ def _log_latency(model_key, question, elapsed_s, rounds, tool_calls, hit_count):
     with LATENCY_LOG.open("a") as f:
         f.write(json.dumps(entry) + "\n")
 
+
+def _warmup_model():
+    """Preload the default coder model so the first user request is warm."""
+    try:
+        t0 = time.time()
+        print(f"[warmup] loading {MODELS['coder']}...", flush=True)
+        _ollama.chat(
+            model=MODELS["coder"],
+            messages=[],
+            stream=False,
+            keep_alive=KEEP_ALIVE,
+        )
+        print(
+            f"[warmup] {MODELS['coder']} ready in {time.time() - t0:.1f}s",
+            flush=True,
+        )
+    except Exception as e:
+        print(f"[warmup] failed: {e}", flush=True)
+
 DB_DIR = "/Users/abchatur/local-ai/chroma_db"
 EMBED_MODEL = "nomic-embed-text"
 COLLECTIONS = ["knowledge", "hpm_docs", "innovation_suite_docs"]
@@ -766,6 +785,9 @@ def chat():
 
 
 if __name__ == "__main__":
+    # Start warming the default model without blocking Flask startup.
+    threading.Thread(target=_warmup_model, daemon=True).start()
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--port", type=int, default=8766)
     args = parser.parse_args()
