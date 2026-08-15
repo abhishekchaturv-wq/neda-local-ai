@@ -1,0 +1,65 @@
+# Python
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Secrets / credentials
+*.token
+*.tokens
+*_token*
+*.token.json
+.env
+.env.*
+*.pem
+*.key
+credentials*
+secrets*
+
+# Local databases / indexes
+*.db
+*.sqlite
+*.sqlite3
+chroma/
+chromadb/
+data/
+index/
+storage/
+
+# Logs
+logs/
+*.log
+*.jsonl
+
+# Backups
+*.backup*
+*.bak
+*.old
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+
+# NEDA local knowledge / generated data
+chroma_db/
+learned/
+
+# Crawl / runtime artifacts
+*_crawl_log.txt
+*_log.txt
+pull_log.txt
+queue_runner_log.txt
+vision_pull_log.txt
+
+# Generated archives / patches
+*.zip
+*.patch
+
+# Temporary / local backups
+*.backup-before-*
+*.bak-*
+*.backup
+*.old
