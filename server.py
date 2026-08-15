@@ -435,6 +435,21 @@ def _extract_fallback_tool_calls(content, known_names=None):
     return calls
 
 
+def _needs_rag(question: str) -> bool:
+    """Return True when the request explicitly asks for local knowledge."""
+    q = (question or "").lower().strip()
+
+    return any(marker in q for marker in (
+        "local knowledge",
+        "knowledge base",
+        "stored knowledge",
+        "according to the documentation",
+        "according to the docs",
+        "what does the documentation say",
+        "what do the docs say",
+    ))
+
+
 def _needs_normal_tools(question: str) -> bool:
     """Return True when a normal request genuinely needs live tools."""
     q = question.lower().strip()
@@ -578,19 +593,20 @@ def chat():
             # This avoids unnecessary embedding/model work and prevents
             # unrelated retrieved context from contaminating simple answers.
             needs_tools = _needs_normal_tools(question)
+            needs_rag = _needs_rag(question)
 
-            if needs_tools:
+            if needs_rag:
                 hits = retrieve(question)
                 sources = sorted(set(m["source"] for _, m in hits))
-                active_tools = TOOLS
                 context = "\n\n---\n\n".join(
                     f"[{m['source']}]\n{d}" for d, m in hits
                 )
             else:
                 hits = []
                 sources = []
-                active_tools = []
                 context = ""
+
+            active_tools = TOOLS if needs_tools else []
 
             request_num_ctx = NUM_CTX
 
