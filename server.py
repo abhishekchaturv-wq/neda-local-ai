@@ -427,31 +427,11 @@ def _extract_fallback_tool_calls(content, known_names=None):
             except (ValueError, SyntaxError):
                 continue
         calls.append({"function": {"name": name, "arguments": args}})
-    if not calls and known_names:
-        # _BARE_CALL_RE now has 4 capture groups (2 per alternative — see the
-        # regex definition above), so findall returns 4-tuples; exactly one
-        # pair is non-empty depending on which alternative matched. A prior
-        # patch (2026-08-14) added the second alternative but left this loop
-        # unpacking 2 values — a real regression caught immediately after
-        # applying: it would have raised ValueError on EVERY bare-call match,
-        # including the paren-style form that worked fine before. Also fixes
-        # a pre-existing bug in the same pass: the argument key was always
-        # hardcoded to "filename", which is wrong for any tool whose first
-        # parameter is named differently (e.g. web_search's is `query`) —
-        # now looked up via the matched tool's real signature instead.
-        for paren_name, paren_arg, bare_name, bare_arg in _BARE_CALL_RE.findall(content):
-            name = paren_name or bare_name
-            arg = paren_arg or bare_arg
-            if not name or name not in known_names:
-                continue
-            if arg:
-                fn = TOOL_MAP.get(name)
-                params = list(inspect.signature(fn).parameters) if fn else []
-                key = params[0] if params else "filename"
-                args = {key: arg}
-            else:
-                args = {}
-            calls.append({"function": {"name": name, "arguments": args}})
+    # IMPORTANT:
+    # Do not execute bare Python-style text such as:
+    #     sync_from_github()
+    # Tool execution must come from Ollama's structured tool_calls field or
+    # the explicit JSON fallback above. Plain model text is ordinary text.
     return calls
 
 
