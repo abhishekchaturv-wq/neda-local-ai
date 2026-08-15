@@ -35,6 +35,8 @@ select,button{background:var(--surface-1);border:1px solid var(--rule);color:var
 .msg.neda .bubble{background:var(--surface-1);border:1px solid var(--rule);
  border-radius:14px 14px 14px 3px;padding:12px 15px;max-width:88%;white-space:pre-wrap}
 .meta{display:flex;gap:6px;flex-wrap:wrap;font-size:11px;color:var(--text-muted)}
+.copy-btn{margin-left:auto;padding:2px 7px;font-size:11px;color:var(--text-muted)}
+.copy-btn:hover{color:var(--text-primary)}
 .pill{background:var(--surface-2);border:1px solid var(--rule);border-radius:5px;
  padding:2px 7px;display:inline-flex;align-items:center;gap:4px}
 .pill.tool{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 40%,var(--rule))}
@@ -185,6 +187,29 @@ function addUserMsg(text, imgDataUrl){
 function addNedaMsg(){
  const m=document.createElement('div'); m.className='msg neda';
  m.innerHTML=`<div class="meta"></div><div class="bubble"><span class="thinking"><span></span><span></span><span></span></span><span class="status"></span><span class="text"></span><span class="cursor" style="display:none"></span></div>`;
+
+ const copyBtn=document.createElement('button');
+ copyBtn.className='copy-btn';
+ copyBtn.textContent='Copy';
+ copyBtn.type='button';
+ copyBtn.onclick=async()=>{
+  const clone=m.cloneNode(true);
+  clone.querySelectorAll('.copy-btn').forEach(el=>el.remove());
+  clone.querySelectorAll('.thinking,.cursor,.status').forEach(el=>el.remove());
+
+  const text=clone.innerText.trim();
+
+  try{
+   await navigator.clipboard.writeText(text);
+   copyBtn.textContent='Copied!';
+   setTimeout(()=>{copyBtn.textContent='Copy';},1500);
+  }catch(e){
+   copyBtn.textContent='Failed';
+   setTimeout(()=>{copyBtn.textContent='Copy';},1500);
+  }
+ };
+
+ m.querySelector('.meta').appendChild(copyBtn);
  wrap.appendChild(m); wrap.scrollTop=wrap.scrollHeight;
  return m;
 }
