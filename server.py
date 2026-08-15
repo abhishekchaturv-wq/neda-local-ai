@@ -767,7 +767,7 @@ def chat():
                         result = fn(**args) if fn else f"error: unknown tool {name!r}"
                     except Exception as e:
                         result = f"error calling {name}: {e}"
-                messages.append({"role": "tool", "content": str(result), "name": name})
+                messages.append({"role": "tool", "content": str(result), "tool_name": name})
 
         yield sse("token", {"text": "(stopped after max tool-call rounds without a final answer)"})
         yield sse("done", {})
