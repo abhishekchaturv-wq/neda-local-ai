@@ -575,24 +575,37 @@ def chat():
             ]
 
         else:
-            hits = retrieve(question)
-            sources = sorted(set(m["source"] for _, m in hits))
-
-            # Fast path: ordinary questions don't need tool schemas.
-            # This prevents Qwen from inventing an unnecessary tool call.
+            # Route first. Direct questions skip BOTH RAG and tool schemas.
+            # This avoids unnecessary embedding/model work and prevents
+            # unrelated retrieved context from contaminating simple answers.
             needs_tools = _needs_normal_tools(question)
-            active_tools = TOOLS if needs_tools else []
+
+            if needs_tools:
+                hits = retrieve(question)
+                sources = sorted(set(m["source"] for _, m in hits))
+                active_tools = TOOLS
+                context = "\n\n---\n\n".join(
+                    f"[{m['source']}]\n{d}" for d, m in hits
+                )
+            else:
+                hits = []
+                sources = []
+                active_tools = []
+                context = ""
+
             request_num_ctx = NUM_CTX
 
-            context = "\n\n---\n\n".join(
-                f"[{m['source']}]\n{d}" for d, m in hits
-            )
+            if context:
+                user_content = (
+                    f"Context from local knowledge base:\n\n{context}"
+                    f"\n\n---\n\nQuestion: {question}"
+                )
+            else:
+                user_content = question
 
             messages = [
                 {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content":
-                    f"Context from local knowledge base:\n\n{context}"
-                    f"\n\n---\n\nQuestion: {question}"},
+                {"role": "user", "content": user_content},
             ]
 
         yield sse("retrieval", {"sources": sources})
