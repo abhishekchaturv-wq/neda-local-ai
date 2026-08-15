@@ -5,6 +5,7 @@ from datetime import datetime
 from pathlib import Path
 
 def sync_from_github():
+    """Safely synchronizes the local ~/local-ai repository from origin/main, refusing dirty/ahead/diverged states and validating Python files before accepting the update."""
     repo_path = Path.home() / "local-ai"
     
     # Step 1: Verify ~/local-ai is a Git repository
