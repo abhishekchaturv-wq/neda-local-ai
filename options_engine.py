@@ -7,8 +7,10 @@ from typing import Optional
 
 class OptionType(str, Enum):
     CALL="CALL"; PUT="PUT"
+
 class AssetClass(str, Enum):
-    STOCK="STOCK"; INDEX="INDEX"; COMMODITY="COMMODITY"
+    STOCK="STOCK"; INDEX="INDEX"; COMMODITY="COMMODITY"; CRYPTO="CRYPTO"
+
 class Moneyness(str, Enum):
     ITM="ITM"; ATM="ATM"; OTM="OTM"
 
