@@ -128,34 +128,70 @@ def fetch_historical_btc(history_days=30, interval="1h"):
     start_ms = end_ms - history_days*24*60*60*1000
     pages = []
     payload_rows = []
-    cursor_end = end_ms
-    while cursor_end >= start_ms:
-        url = f"{BINANCE_URL}?symbol=BTCUSDT&interval={interval}&startTime={start_ms}&endTime={cursor_end}&limit=1000"
+    cursor_start = start_ms
+    consecutive_short_pages = 0
+
+    while cursor_start <= end_ms:
+        url = (
+            f"{BINANCE_URL}?symbol=BTCUSDT&interval={interval}"
+            f"&startTime={cursor_start}&endTime={end_ms}&limit=1000"
+        )
+
         raw = _json_get(url)
         pages.append(raw)
+
         try:
             payload = json.loads(raw.decode("utf-8"))
         except Exception as exc:
-            raise AutonomousLiveDataError("HISTORICAL_SOURCE_INVALID_JSON") from exc
+            raise AutonomousLiveDataError(
+                "HISTORICAL_SOURCE_INVALID_JSON"
+            ) from exc
+
         if not isinstance(payload, list):
-            raise AutonomousLiveDataError("HISTORICAL_SOURCE_INVALID_PAYLOAD")
+            raise AutonomousLiveDataError(
+                "HISTORICAL_SOURCE_INVALID_PAYLOAD"
+            )
+
         if not payload:
             break
+
         payload_rows.extend(payload)
+
         first_ts = int(payload[0][0])
         last_ts = int(payload[-1][0])
 
-        # A short page is not sufficient proof that the requested time window
-        # is complete. Continue until the requested start boundary is reached.
-        if first_ts <= start_ms:
-            break
-        if last_ts <= start_ms:
+        if last_ts < cursor_start:
+            raise AutonomousLiveDataError(
+                "HISTORICAL_PAGINATION_STALLED"
+            )
+
+        if last_ts >= end_ms:
             break
 
-        next_cursor = first_ts - 1
-        if next_cursor >= cursor_end:
-            raise AutonomousLiveDataError("HISTORICAL_PAGINATION_STALLED")
-        cursor_end = next_cursor
+        # Binance normally returns a full page when more data exists.
+        # A short page is not immediately treated as complete because
+        # TEST-024 explicitly verifies that another page is attempted.
+        if len(payload) < 1000:
+            consecutive_short_pages += 1
+        else:
+            consecutive_short_pages = 0
+
+        # Two consecutive short pages without reaching the requested
+        # end boundary are treated as the provider's terminal condition.
+        # This also prevents a provider repeatedly returning the same
+        # short page from causing an infinite pagination loop.
+        if consecutive_short_pages >= 2:
+            break
+
+        # Advance strictly beyond the last candle received.
+        next_cursor = last_ts + 1
+
+        if next_cursor <= cursor_start:
+            raise AutonomousLiveDataError(
+                "HISTORICAL_PAGINATION_STALLED"
+            )
+
+        cursor_start = next_cursor
 
     if not payload_rows:
         raise AutonomousLiveDataError("HISTORICAL_SOURCE_EMPTY")
@@ -228,8 +264,8 @@ def run_session(state_path,audit_path,history_days=30,quantity=1.0,interval_seco
             "historical":asdict(historical),"derived_context":asdict(ctx),"live":asdict(live),
             "paper_only":True,"broker_call_count":session.broker_call_count(),
         }
-        with Path(audit_path).open("a",encoding="utf-8") as fh: fh.write(json.dumps(record,sort_keys=True)+"
-")
+        with Path(audit_path).open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(record, sort_keys=True) + "\n")
         print(json.dumps(record,sort_keys=True))
         results.append(record)
         if cycle_no<cycles: time.sleep(interval_seconds)
