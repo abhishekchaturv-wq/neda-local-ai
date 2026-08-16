@@ -92,16 +92,9 @@ class OptionsChainV1Tests(unittest.TestCase):
         self.assertEqual(result.strikes[1].call_volume, 60)
 
     def test_invalid_oi_is_rejected(self):
-        contract = OptionContract(
-            symbol="NIFTY",
-            asset_class=AssetClass.INDEX,
-            expiry=date(2026, 9, 24),
-            strike=25000,
-            option_type=OptionType.CALL,
-        )
-        quote = OptionQuote(open_interest=-1)
+        # OptionQuote validates the raw quote before OptionSnapshot is built.
         with self.assertRaises(ValueError):
-            OptionSnapshot(contract, 25000, quote)
+            OptionQuote(open_interest=-1)
 
 
 if __name__ == "__main__":
