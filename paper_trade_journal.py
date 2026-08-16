@@ -1,11 +1,4 @@
-"""TEST-019 paper-trade journal and feedback dataset.
-
-Observation layer only:
-- records paper decisions and outcomes;
-- computes objective outcome metrics;
-- does not place broker orders;
-- does not modify strategy parameters.
-"""
+"""TEST-019/021 paper-trade journal and feedback dataset."""
 from __future__ import annotations
 from dataclasses import dataclass, asdict
 from datetime import datetime, timezone
@@ -45,6 +38,9 @@ class TradeRecord:
             raise ValueError("dte cannot be negative")
         if self.spread_pct < 0:
             raise ValueError("spread_pct cannot be negative")
+        completed = self.exit_premium is not None or self.realized_pnl is not None
+        if completed and not self.exit_reason:
+            raise ValueError("completed trade requires explicit exit_reason")
 
     @property
     def completed(self) -> bool:
@@ -90,7 +86,6 @@ class PaperTradeJournal:
         }
 
     def feedback_rows(self) -> list[dict]:
-        """Return immutable decision/outcome fields for later analysis."""
         return [asdict(x) for x in self.completed()]
 
     def export_json(self) -> str:

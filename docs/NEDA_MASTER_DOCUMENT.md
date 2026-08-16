@@ -60,38 +60,40 @@ Risk baseline:
 
 ### TEST-019 — Paper Trade Journal & Feedback Engine
 Delivery commit: `a75aa57`
+Final verification: 11/11 journal tests passed; all TEST-018 through market-data regressions passed.
+The journal records signal reason, **entry reason**, selection reason, risk reason, exit reason, P&L and MFE/MAE.
+TEST-019 is observation-only and does not automatically modify strategy parameters.
 
-**FINAL VERIFICATION: PASSED**
-- TEST-019 Journal: **11/11 passed**
-- TEST-018 Risk regression: **10/10 passed**
-- TEST-017 Strategy regression: **6/6 passed**
-- TEST-016 Buyer regression: **4/4 passed**
-- TEST-015 Paper regression: **5/5 passed**
-- Crypto regression: **3/3 passed**
-- Market Data regression: **5/5 passed**
+### TEST-020 — End-to-End Paper Trading Runner
+Initial commit: `e0ceda0`
+Fix/final commit: `1dbcb2f`
+Final verification: **3/3 TEST-020 tests passed** plus TEST-019 11/11, TEST-018 10/10, TEST-017 6/6, TEST-016 4/4, TEST-015 5/5, Crypto 3/3 and Market Data 5/5. All return codes were 0.
+Established the verified single-cycle path:
+Delta public data → buyer strategy → risk gate → buyer-only paper execution → journal.
+The intermediate monitoring state is `HOLD`; an actual close is `SELL_TO_CLOSE`.
+No live broker execution.
 
-All seven verification groups completed with `OK`; the verification worktree was removed successfully.
+### TEST-021 — Persistent Paper Trading Session
+**Implementation milestone; verification pending until the complete TEST-021 suite and regressions pass.**
 
-Records per completed paper trade include:
-- timestamp and trade ID;
-- BTC option type, strike and DTE;
-- entry and exit premium;
-- quantity;
-- directional score;
-- spread, volume and open interest;
-- **signal reason** — why the directional setup was detected;
-- **entry reason** — why NEDA actually decided to enter the trade;
-- **selection reason** — why this specific option contract was selected;
-- **risk decision reason** — why the risk gate permitted the entry;
-- exit reason;
-- realized P&L;
-- maximum favorable/adverse P&L.
+Purpose:
+- Extend TEST-020 into a restart-safe persistent session.
+- Persist open position and completed journal state.
+- Prevent duplicate entries after restart.
+- Reconstruct the buyer-only paper position after restart.
+- Require an explicit `exit_reason` for every completed trade.
 
-The decision chain is intentionally preserved as separate fields:
+Mandatory exit reasons:
+- `TAKE_PROFIT`
+- `STOP_LOSS`
+- `EXPIRY_PROTECTION`
+- `SIGNAL_REVERSAL`
+- `RISK_LIMIT`
+- `DATA_SAFETY_EXIT`
+- `SESSION_SHUTDOWN`
+- `MANUAL_EXIT`
 
-**Market conditions → Signal reason → Entry reason → Contract selection reason → Risk approval → Paper execution → Exit → Outcome**
-
-TEST-019 is observation-only. It does not place broker orders and does not automatically modify strategy parameters.
+A completed trade without an exit reason is invalid.
 
 ## Feedback-loop design
 The loop is:
@@ -115,7 +117,8 @@ NEDA should **not automatically learn from a single trade or small sample**. Str
 Before sustained paper trading:
 - TEST-018 verified.
 - TEST-019 journal/feedback instrumentation verified.
-- End-to-end live Delta public data → TEST-017 strategy → TEST-018 risk → paper execution → TEST-019 journal verified.
+- TEST-020 end-to-end live Delta public data → TEST-017 strategy → TEST-018 risk → paper execution → TEST-019 journal verified.
+- TEST-021 persistence/recovery verified.
 - No live broker calls.
 - Kill switch tested.
 - State persistence/recovery tested.
