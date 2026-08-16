@@ -10,10 +10,6 @@ Design goals:
 - Keep the replay deterministic.
 - Separate research and validation periods.
 - Produce an audit trail suitable for later paper-trading comparison.
-
-This module intentionally supports BTC OHLC/market data first. Historical BTC
-option-chain data must be supplied as a separately verified dataset; this
-module will not manufacture option snapshots when they are unavailable.
 """
 
 from __future__ import annotations
@@ -21,12 +17,11 @@ from __future__ import annotations
 from dataclasses import dataclass, asdict
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterable, Sequence
+from typing import Sequence
 import csv
 import hashlib
 import json
 import urllib.request
-
 
 UTC = timezone.utc
 
@@ -85,15 +80,24 @@ def sha256_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def _canonical_number(value: float) -> float:
+    """Normalize parsed CSV values so 100 and 100.0 hash identically."""
+    return float(value)
+
+
 def canonical_dataset_hash(rows: Sequence[BTCBar]) -> str:
+    # Canonicalize all numeric OHLCV values as floats.  CSV parsing produces
+    # floats, while unit-test fixtures may contain integer literals.  Without
+    # this normalization the same dataset could hash differently depending on
+    # whether it came from a CSV file or an in-memory fixture.
     payload = [
         {
-            "timestamp": r.timestamp,
-            "open": r.open,
-            "high": r.high,
-            "low": r.low,
-            "close": r.close,
-            "volume": r.volume,
+            "timestamp": int(r.timestamp),
+            "open": _canonical_number(r.open),
+            "high": _canonical_number(r.high),
+            "low": _canonical_number(r.low),
+            "close": _canonical_number(r.close),
+            "volume": _canonical_number(r.volume),
         }
         for r in rows
     ]
@@ -172,10 +176,10 @@ def fetch_binance_btc_klines(
     limit: int = 1000,
 ) -> tuple[bytes, DataProvenance]:
     """
-    Fetches public BTCUSDT spot klines from Binance.
+    Fetch public BTCUSDT spot klines from Binance.
 
-    The raw response is hashed before parsing. This function does not fall back
-    to fixtures, generated prices, or cached demo data.
+    The raw response is hashed before parsing. No fixtures, generated prices,
+    or cached demo data are used as a fallback.
     """
     url = (
         "https://api.binance.com/api/v3/klines"
@@ -198,16 +202,10 @@ def fetch_binance_btc_klines(
     if not isinstance(payload, list) or not payload:
         raise ProvenanceError("LIVE_SOURCE_EMPTY_OR_INVALID")
 
-    # Convert into canonical CSV so the replay engine uses exactly the same
-    # representation for locally supplied and remotely retrieved datasets.
     lines = ["timestamp,open,high,low,close,volume"]
-    for k in payload:
-        lines.append(
-            f"{int(k[0])},{k[1]},{k[2]},{k[3]},{k[4]},{k[5]}"
-        )
-    csv_bytes = ("\n".join(lines) + "\n").encode()
     dataset_rows = []
     for k in payload:
+        lines.append(f"{int(k[0])},{k[1]},{k[2]},{k[3]},{k[4]},{k[5]}")
         dataset_rows.append(
             BTCBar(
                 timestamp=int(k[0]),
@@ -218,6 +216,8 @@ def fetch_binance_btc_klines(
                 volume=float(k[5]),
             )
         )
+
+    csv_bytes = ("\n".join(lines) + "\n").encode()
     validate_bars(dataset_rows)
 
     provenance = DataProvenance(
@@ -281,7 +281,11 @@ def replay(
         "records": [asdict(r) for r in audit],
     }
     deterministic_hash = sha256_bytes(
-        json.dumps(deterministic_payload, sort_keys=True, separators=(",", ":")).encode()
+        json.dumps(
+            deterministic_payload,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode()
     )
 
     return ReplayResult(

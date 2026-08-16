@@ -119,6 +119,18 @@ class TestHistoricalReplayAudit(unittest.TestCase):
         b = replay(self.rows, p, 2000)
         self.assertEqual(a.deterministic_hash, b.deterministic_hash)
 
+    def test_csv_float_parsing_matches_fixture_hash(self):
+        raw = self._csv_bytes()
+        p = self._provenance(raw)
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "btc.csv"
+            path.write_bytes(raw)
+            rows, _ = load_csv(path, p)
+        self.assertEqual(
+            canonical_dataset_hash(self.rows),
+            canonical_dataset_hash(rows),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
