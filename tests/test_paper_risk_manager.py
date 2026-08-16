@@ -32,8 +32,8 @@ class TestBuyerRiskManager(unittest.TestCase):
         self.assertEqual(r.reason, "MAX_OPEN_POSITIONS_REACHED")
 
     def test_total_premium_limit(self):
-        r = self.rm.evaluate_entry(EntryRequest(3000, 14),
-                                   RiskState(open_premium=6000))
+        r = self.rm.evaluate_entry(EntryRequest(1500, 14),
+                                   RiskState(open_premium=7000))
         self.assertEqual(r.reason, "TOTAL_PREMIUM_LIMIT_EXCEEDED")
 
     def test_expiry_protection(self):
