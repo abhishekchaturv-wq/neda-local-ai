@@ -44,7 +44,7 @@ Strategy rejects weak direction, wide spreads, low liquidity and deep OTM candid
 ### TEST-018 — Buyer risk & position management
 Initial commit: `7fdcff9`
 Fix: `0e26c04`
-Final verification: **10/10 TEST-018 risk tests passed**, plus TEST-017 6/6, TEST-016 4/4, TEST-015 5/5, Crypto 3/3 and Market Data 5/5. All return codes were 0.
+Final verification: 10/10 TEST-018 risk tests passed, plus all required regressions. All return codes were 0.
 
 Risk baseline:
 - Starting paper capital: 100,000 units.
@@ -60,40 +60,35 @@ Risk baseline:
 
 ### TEST-019 — Paper Trade Journal & Feedback Engine
 Delivery commit: `a75aa57`
-Final verification: 11/11 journal tests passed; all TEST-018 through market-data regressions passed.
+Final verification: 11/11 journal tests passed; all required regressions passed.
 The journal records signal reason, **entry reason**, selection reason, risk reason, exit reason, P&L and MFE/MAE.
 TEST-019 is observation-only and does not automatically modify strategy parameters.
 
 ### TEST-020 — End-to-End Paper Trading Runner
 Initial commit: `e0ceda0`
 Fix/final commit: `1dbcb2f`
-Final verification: **3/3 TEST-020 tests passed** plus TEST-019 11/11, TEST-018 10/10, TEST-017 6/6, TEST-016 4/4, TEST-015 5/5, Crypto 3/3 and Market Data 5/5. All return codes were 0.
+Final verification: 3/3 TEST-020 tests passed plus the complete TEST-019 through market-data regression chain. All return codes were 0.
 Established the verified single-cycle path:
 Delta public data → buyer strategy → risk gate → buyer-only paper execution → journal.
 The intermediate monitoring state is `HOLD`; an actual close is `SELL_TO_CLOSE`.
 No live broker execution.
 
 ### TEST-021 — Persistent Paper Trading Session
-**Implementation milestone; verification pending until the complete TEST-021 suite and regressions pass.**
+Final commit: `911278e`
+Verification: 4/4 TEST-021 tests passed plus TEST-020 through TEST-015 and crypto/market-data regressions. All return codes were 0.
+Established restart-safe open-position persistence, duplicate-entry protection and explicit exit-reason enforcement for completed trades.
+
+### TEST-022 — Controlled Live-Data Paper-Trading Session
+**Implementation milestone; verification pending.**
 
 Purpose:
-- Extend TEST-020 into a restart-safe persistent session.
-- Persist open position and completed journal state.
-- Prevent duplicate entries after restart.
-- Reconstruct the buyer-only paper position after restart.
-- Require an explicit `exit_reason` for every completed trade.
+- Run repeated paper-only cycles against the public Delta BTC option snapshot.
+- Preserve TEST-017 strategy, TEST-018 risk, TEST-019 journal and TEST-021 persistence.
+- Audit every `NO_TRADE`, `BUY`, `HOLD` and `SELL_TO_CLOSE` decision.
+- Keep signal reason, entry reason, selection reason, risk reason and exit reason distinct.
+- Assert that broker call count remains zero.
 
-Mandatory exit reasons:
-- `TAKE_PROFIT`
-- `STOP_LOSS`
-- `EXPIRY_PROTECTION`
-- `SIGNAL_REVERSAL`
-- `RISK_LIMIT`
-- `DATA_SAFETY_EXIT`
-- `SESSION_SHUTDOWN`
-- `MANUAL_EXIT`
-
-A completed trade without an exit reason is invalid.
+TEST-022 is an operational paper-trading milestone. It does **not** enable live trading and does not introduce automatic strategy learning.
 
 ## Feedback-loop design
 The loop is:
@@ -119,6 +114,7 @@ Before sustained paper trading:
 - TEST-019 journal/feedback instrumentation verified.
 - TEST-020 end-to-end live Delta public data → TEST-017 strategy → TEST-018 risk → paper execution → TEST-019 journal verified.
 - TEST-021 persistence/recovery verified.
+- TEST-022 controlled live-data session verified.
 - No live broker calls.
 - Kill switch tested.
 - State persistence/recovery tested.
