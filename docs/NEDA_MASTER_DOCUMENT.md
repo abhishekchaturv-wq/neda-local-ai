@@ -13,11 +13,7 @@ NEDA is being built as a disciplined BTC options **buyer**, initially using Delt
 - No autonomous self-modification of strategy parameters.
 
 ## Delivery architecture
-The development workflow uses the existing local delivery pipeline:
-
-`ZIP in ~/Downloads` → `NEDA Delivery Automation V2` → `~/Downloads/neda-delivery/inbox` + manifest → `NEDA Delivery Watcher V3` → isolated Git worktree → validation → commit → push to `origin/main`.
-
-The watcher and automation are deliberately separate from the trading logic.
+ZIP in `~/Downloads` → NEDA Delivery Automation V2 → `~/Downloads/neda-delivery/inbox` + manifest → NEDA Delivery Watcher V3 → isolated Git worktree → validation → commit → push to `origin/main`.
 
 ## Milestone history
 
@@ -29,7 +25,7 @@ Verified successfully. Hardened delivery flow for concurrent/overlapping deliver
 
 ### TEST-015 — Delta paper-trading foundation
 Commit: `70897e6`
-Verification: 5/5 Delta/paper tests passed; crypto, market-data and trading-UI regressions also passed.
+Verification: 5/5 Delta/paper tests passed; crypto, market-data and trading-UI regressions passed.
 Established broker-independent paper execution and Delta public market-data foundation.
 
 ### TEST-016 — Delta live-data paper buyer flow
@@ -40,76 +36,95 @@ Buyer-only execution rejects SELL-to-open and permits SELL-to-close.
 No live broker execution.
 
 ### TEST-017 — BTC options buyer strategy
-Final verified commit: `42ee7cb`
-Verification:
-- Strategy: 6/6 passed
-- TEST-016 regression: 4/4 passed
-- TEST-015 regression: 5/5 passed
-- Crypto regression: 3/3 passed
+Final strategy commit: `42ee7cb`
+Later documentation-status patch: `c6900af`
+Verification: 6/6 strategy tests, 4/4 TEST-016, 5/5 TEST-015, 3/3 crypto regression tests passed.
+Strategy rejects weak direction, wide spreads, low liquidity and deep OTM candidates; selects CALL in bullish context and PUT in bearish context.
 
-Strategy baseline:
-- Directional score from trend/momentum.
-- CALL for bullish direction; PUT for bearish direction.
-- 3–30 DTE.
-- Maximum 8% bid/ask spread.
-- Minimum volume/open interest.
-- Minimum premium.
-- Maximum 5% OTM.
-- Deterministic candidate scoring.
-- No broker execution and no self-learning.
+### TEST-018 — Buyer risk & position management
+Initial commit: `7fdcff9`
+Fix: `0e26c04`
+Final verification: **10/10 TEST-018 risk tests passed**, plus TEST-017 6/6, TEST-016 4/4, TEST-015 5/5, Crypto 3/3 and Market Data 5/5. All return codes were 0.
 
-## TEST-018 — Buyer risk & position management
-**Purpose:** add the hard risk gate before real paper trading begins.
-
-Default baseline configuration:
+Risk baseline:
 - Starting paper capital: 100,000 units.
-- Maximum premium per trade: 2% of starting capital.
+- Maximum premium per trade: 2%.
 - Maximum total open premium: 8%.
 - Maximum simultaneous positions: 3.
 - Daily realized-loss limit: 3%.
 - Maximum consecutive losses before new entries: 3.
 - Stop-loss: -35% on option premium.
-- Take-profit: +75% on option premium.
+- Take-profit: +75%.
 - New entries require at least 3 DTE.
 - Positions at 1 DTE or less trigger expiry protection.
 
-TEST-018 is a **risk decision layer**, not a broker adapter. It cannot place live orders and does not change TEST-017 strategy parameters.
+### TEST-019 — Paper Trade Journal & Feedback Engine
+Purpose: create the measurement layer needed for sustained paper trading and evidence-based feedback.
+
+Records per completed paper trade include:
+- timestamp and trade ID;
+- BTC option type, strike and DTE;
+- entry and exit premium;
+- quantity;
+- directional score;
+- spread, volume and open interest;
+- **signal reason** — why the directional setup was detected;
+- **entry reason** — why NEDA actually decided to enter the trade;
+- **selection reason** — why this specific option contract was selected;
+- **risk decision reason** — why the risk gate permitted the entry;
+- exit reason;
+- realized P&L;
+- maximum favorable/adverse P&L.
+
+The decision chain is intentionally preserved as separate fields:
+
+**Market conditions → Signal reason → Entry reason → Contract selection reason → Risk approval → Paper execution → Exit → Outcome**
+
+This separation is required for the later feedback loop so NEDA can determine which *entry reasons* and contract-selection conditions actually produce positive expectancy, rather than only measuring whether a trade won or lost.
+
+The journal provides:
+- completed-trade filtering;
+- win/loss counts;
+- win rate;
+- realized and average P&L;
+- average return percentage;
+- structured feedback rows;
+- JSON export;
+- explicit entry-reason, selection-reason and risk-reason fields for feedback analysis.
+
+TEST-019 corrected scope: **entry reason is explicitly recorded and kept separate from signal and risk reasons**.
+
+TEST-019 is deliberately **observation-only**. It does not place broker orders and does not automatically modify strategy parameters.
 
 ## Feedback-loop design
-The feedback loop will be added only after a sufficient paper-trade sample exists.
+The loop is:
 
-Each paper trade should eventually record:
-1. Market snapshot at signal time.
-2. Directional score.
-3. Selected option and alternatives.
-4. Entry premium and spread.
-5. DTE, moneyness, liquidity and open interest.
-6. Risk decision.
-7. Exit reason.
-8. Maximum favorable/adverse excursion.
-9. Realized P&L.
-10. Slippage/fees assumptions.
-11. Whether the signal was directionally correct.
-12. Whether the option-selection decision helped or hurt.
+Market snapshot → strategy signal → option selection → risk gate → paper entry → paper monitoring → paper exit → journal → outcome analysis → hypothesis → offline/replay test → controlled paper validation.
 
-The system should first **measure** performance. It must not automatically rewrite the strategy from a small sample. Changes should be proposed, tested on historical/replay data, and then paper-validated.
+The first feedback phase should measure:
+1. Directional accuracy.
+2. Option-selection quality.
+3. Entry spread/slippage.
+4. DTE and moneyness effects.
+5. Liquidity effects.
+6. Stop-loss/take-profit behavior.
+7. Maximum favorable/adverse excursion.
+8. Expected value and win rate.
+9. Performance by market regime.
+
+NEDA should **not automatically learn from a single trade or small sample**. Strategy changes must be explicit, testable and paper-validated.
 
 ## Paper-trading readiness gate
 Before sustained paper trading:
-- TEST-018 risk manager verified.
-- TEST-019 trade journal/feedback instrumentation verified.
-- End-to-end live Delta public data → strategy → risk → paper execution verified.
+- TEST-018 verified.
+- TEST-019 journal/feedback instrumentation verified.
+- End-to-end live Delta public data → TEST-017 strategy → TEST-018 risk → paper execution → TEST-019 journal verified.
 - No live broker calls.
 - Kill switch tested.
 - State persistence/recovery tested.
 - Basic replay/backtest validation completed.
 
 ## Future live-trading gate
-Live execution must remain disabled until:
-- broker/API permissions and order contracts are independently verified,
-- paper performance is statistically meaningful,
-- risk controls survive failure/recovery tests,
-- execution reconciliation is tested,
-- and explicit human approval is given.
+Live execution remains disabled until broker/API permissions and order contracts, paper performance, risk controls, reconciliation and failure recovery are independently verified and explicit human approval is given.
 
-**No live trading is implied by any current milestone.**
+**No current milestone enables live trading.**
