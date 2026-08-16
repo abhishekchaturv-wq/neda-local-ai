@@ -81,3 +81,30 @@ class PaperExecutionAdapter:
 
     def broker_call_count(self):
         return 0
+
+
+class BuyerOnlyPaperExecutionAdapter(PaperExecutionAdapter):
+    """TEST-016 paper adapter for an options buyer.
+
+    BUY opens/increases long option positions.
+    SELL is permitted only when it reduces an existing long position.
+    SELL-to-open / naked short option orders are rejected.
+    """
+
+    MODE = "PAPER_BUYER_ONLY"
+
+    def submit(self, symbol, side, quantity, bid, ask, limit_price=None):
+        if side is PaperSide.SELL:
+            position = self.positions.get(symbol)
+            current_qty = position.quantity if position else 0.0
+            if current_qty < quantity:
+                self._counter += 1
+                oid = f"PAPER-{self._counter:06d}"
+                order = PaperOrder(
+                    oid, symbol, side, quantity, limit_price,
+                    PaperOrderStatus.REJECTED,
+                    reason="OPTIONS_BUYER_POLICY_SELL_TO_OPEN_FORBIDDEN",
+                )
+                self.orders.append(order)
+                return order
+        return super().submit(symbol, side, quantity, bid, ask, limit_price)
