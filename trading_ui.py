@@ -1,70 +1,29 @@
 #!/usr/bin/env python3
-"""NEDA Trading UI V1.
-
-Small local Flask application that exposes the existing Options Chain V1
-analytics through a browser dashboard. V1 intentionally uses deterministic
-demo-chain data and performs analysis only; it does not place orders.
-"""
+"""NEDA Trading UI V1 using the broker-independent Market Data Adapter V1."""
 
 from __future__ import annotations
 
-from datetime import date
 from pathlib import Path
 
 from flask import Flask, jsonify, send_from_directory
 
+from market_data import DemoMarketDataProvider, MarketDataProvider
 from options_chain import analyze_chain
-from options_engine import (
-    AssetClass,
-    OptionContract,
-    OptionQuote,
-    OptionSnapshot,
-    OptionType,
-)
 
 APP_ROOT = Path(__file__).resolve().parent
 WEB_ROOT = APP_ROOT / "web"
 
 app = Flask(__name__)
-
-
-def demo_snapshots() -> list[OptionSnapshot]:
-    """Return a deterministic NIFTY-like chain for UI development/testing."""
-    symbol = "NIFTY"
-    expiry = date(2026, 8, 27)
-    underlying = 24520.0
-    rows = [
-        (24200, 180000, 140000, 22000, 18000),
-        (24300, 210000, 165000, 26000, 24000),
-        (24400, 265000, 230000, 34000, 32000),
-        (24500, 310000, 295000, 41000, 46000),
-        (24600, 285000, 330000, 38000, 52000),
-        (24700, 220000, 280000, 29000, 43000),
-        (24800, 175000, 240000, 21000, 35000),
-    ]
-    snapshots = []
-    for strike, call_oi, put_oi, call_vol, put_vol in rows:
-        snapshots.extend([
-            OptionSnapshot(
-                OptionContract(symbol, AssetClass.INDEX, expiry, strike, OptionType.CALL),
-                underlying,
-                OptionQuote(last=max(5.0, underlying - strike + 80), volume=call_vol,
-                            open_interest=call_oi, change_in_open_interest=call_oi // 20),
-            ),
-            OptionSnapshot(
-                OptionContract(symbol, AssetClass.INDEX, expiry, strike, OptionType.PUT),
-                underlying,
-                OptionQuote(last=max(5.0, strike - underlying + 80), volume=put_vol,
-                            open_interest=put_oi, change_in_open_interest=put_oi // 20),
-            ),
-        ])
-    return snapshots
+market_data: MarketDataProvider = DemoMarketDataProvider()
 
 
 def dashboard_payload() -> dict:
-    snapshots = demo_snapshots()
-    analytics = analyze_chain(snapshots)
-    atm = min(snapshots, key=lambda s: abs(s.contract.strike - s.underlying_price)).contract.strike
+    market = market_data.snapshot("NIFTY")
+    analytics = analyze_chain(market.options)
+    atm = min(
+        market.options,
+        key=lambda s: abs(s.contract.strike - market.underlying_price),
+    ).contract.strike
 
     strikes = [
         {
@@ -81,10 +40,11 @@ def dashboard_payload() -> dict:
 
     return {
         "mode": "DEMO / PAPER ANALYSIS",
-        "symbol": "NIFTY",
-        "asset_class": "INDEX",
-        "expiry": "2026-08-27",
-        "spot": snapshots[0].underlying_price,
+        "provider": type(market_data).__name__,
+        "symbol": market.symbol,
+        "asset_class": market.asset_class,
+        "expiry": market.expiry.isoformat(),
+        "spot": market.underlying_price,
         "atm": atm,
         "analytics": {
             "call_oi": analytics.call_oi,
