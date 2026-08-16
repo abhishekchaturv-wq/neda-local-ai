@@ -59,7 +59,18 @@ Risk baseline:
 - Positions at 1 DTE or less trigger expiry protection.
 
 ### TEST-019 — Paper Trade Journal & Feedback Engine
-Purpose: create the measurement layer needed for sustained paper trading and evidence-based feedback.
+Delivery commit: `a75aa57`
+
+**FINAL VERIFICATION: PASSED**
+- TEST-019 Journal: **11/11 passed**
+- TEST-018 Risk regression: **10/10 passed**
+- TEST-017 Strategy regression: **6/6 passed**
+- TEST-016 Buyer regression: **4/4 passed**
+- TEST-015 Paper regression: **5/5 passed**
+- Crypto regression: **3/3 passed**
+- Market Data regression: **5/5 passed**
+
+All seven verification groups completed with `OK`; the verification worktree was removed successfully.
 
 Records per completed paper trade include:
 - timestamp and trade ID;
@@ -80,21 +91,7 @@ The decision chain is intentionally preserved as separate fields:
 
 **Market conditions → Signal reason → Entry reason → Contract selection reason → Risk approval → Paper execution → Exit → Outcome**
 
-This separation is required for the later feedback loop so NEDA can determine which *entry reasons* and contract-selection conditions actually produce positive expectancy, rather than only measuring whether a trade won or lost.
-
-The journal provides:
-- completed-trade filtering;
-- win/loss counts;
-- win rate;
-- realized and average P&L;
-- average return percentage;
-- structured feedback rows;
-- JSON export;
-- explicit entry-reason, selection-reason and risk-reason fields for feedback analysis.
-
-TEST-019 corrected scope: **entry reason is explicitly recorded and kept separate from signal and risk reasons**.
-
-TEST-019 is deliberately **observation-only**. It does not place broker orders and does not automatically modify strategy parameters.
+TEST-019 is observation-only. It does not place broker orders and does not automatically modify strategy parameters.
 
 ## Feedback-loop design
 The loop is:
