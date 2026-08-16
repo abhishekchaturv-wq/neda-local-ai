@@ -1,8 +1,7 @@
-"""NEDA Market Data Adapter V1.
+"""NEDA Market Data Adapter V1.1.
 
-Broker-independent interface for supplying an underlying price and a coherent
-option chain. V1 ships only a deterministic demo provider. Live broker
-connectors are intentionally deferred to later milestones.
+Provider-neutral market snapshot boundary with explicit freshness metadata.
+No broker connectivity is included in this milestone.
 """
 
 from __future__ import annotations
@@ -10,7 +9,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import date
-from typing import Sequence
+import time
 
 from options_engine import OptionSnapshot
 
@@ -22,12 +21,22 @@ class MarketSnapshot:
     expiry: date
     underlying_price: float
     options: tuple[OptionSnapshot, ...]
+    observed_at_epoch: float
+    provider_name: str
+    live: bool = False
+    stale_after_seconds: float = 30.0
 
     def __post_init__(self) -> None:
         if not self.symbol.strip():
             raise ValueError("symbol cannot be empty")
         if self.underlying_price <= 0:
             raise ValueError("underlying_price must be positive")
+        if self.observed_at_epoch <= 0:
+            raise ValueError("observed_at_epoch must be positive")
+        if self.stale_after_seconds <= 0:
+            raise ValueError("stale_after_seconds must be positive")
+        if not self.provider_name.strip():
+            raise ValueError("provider_name cannot be empty")
         if any(s.underlying_price != self.underlying_price for s in self.options):
             raise ValueError("all option snapshots must use the market underlying price")
         if any(s.contract.symbol.upper() != self.symbol.upper() for s in self.options):
@@ -35,52 +44,87 @@ class MarketSnapshot:
         if any(s.contract.expiry != self.expiry for s in self.options):
             raise ValueError("option expiries must match market expiry")
 
+    @property
+    def age_seconds(self) -> float:
+        return max(0.0, time.time() - self.observed_at_epoch)
+
+    @property
+    def is_stale(self) -> bool:
+        return self.age_seconds > self.stale_after_seconds
+
 
 class MarketDataProvider(ABC):
-    """Stable NEDA interface; concrete providers can be broker-specific."""
-
     @abstractmethod
     def snapshot(self, symbol: str, expiry: date | None = None) -> MarketSnapshot:
         raise NotImplementedError
 
 
 class DemoMarketDataProvider(MarketDataProvider):
-    """Deterministic provider used by the UI and automated tests."""
+    """Deterministic NIFTY/BTC provider used by the UI and automated tests."""
+
+    _CONFIG = {
+        "NIFTY": {
+            "asset_class": "INDEX",
+            "underlying": 24520.0,
+            "expiry": date(2026, 8, 27),
+            "strikes": [24200, 24300, 24400, 24500, 24600, 24700, 24800],
+        },
+        "BTC": {
+            "asset_class": "CRYPTO",
+            "underlying": 118500.0,
+            "expiry": date(2026, 8, 28),
+            "strikes": [114000, 116000, 118000, 120000, 122000, 124000],
+        },
+    }
 
     def snapshot(self, symbol: str = "NIFTY", expiry: date | None = None) -> MarketSnapshot:
         symbol = symbol.strip().upper()
-        expiry = expiry or date(2026, 8, 27)
-        underlying = 24520.0
-        rows = [
-            (24200, 180000, 140000, 22000, 18000),
-            (24300, 210000, 165000, 26000, 24000),
-            (24400, 265000, 230000, 34000, 32000),
-            (24500, 310000, 295000, 41000, 46000),
-            (24600, 285000, 330000, 38000, 52000),
-            (24700, 220000, 280000, 29000, 43000),
-            (24800, 175000, 240000, 21000, 35000),
-        ]
+        if symbol not in self._CONFIG:
+            raise ValueError(f"unsupported demo symbol: {symbol}")
+
+        cfg = self._CONFIG[symbol]
+        expiry = expiry or cfg["expiry"]
+        underlying = cfg["underlying"]
+        strikes = cfg["strikes"]
 
         from options_engine import AssetClass, OptionContract, OptionQuote, OptionType
 
         snapshots: list[OptionSnapshot] = []
-        for strike, call_oi, put_oi, call_vol, put_vol in rows:
+        for i, strike in enumerate(strikes):
+            # Deterministic synthetic OI/volume profile; this is test/demo data only.
+            call_oi = 180000 + i * 21000
+            put_oi = 160000 + (len(strikes) - i) * 19000
+            call_vol = 22000 + i * 1800
+            put_vol = 20000 + (len(strikes) - i) * 1700
+
             snapshots.extend([
                 OptionSnapshot(
-                    OptionContract(symbol, AssetClass.INDEX, expiry, strike, OptionType.CALL),
+                    OptionContract(
+                        symbol,
+                        AssetClass.INDEX if cfg["asset_class"] == "INDEX" else AssetClass.CRYPTO,
+                        expiry,
+                        strike,
+                        OptionType.CALL,
+                    ),
                     underlying,
                     OptionQuote(
-                        last=max(5.0, underlying - strike + 80),
+                        last=max(5.0, underlying - strike + underlying * 0.002),
                         volume=call_vol,
                         open_interest=call_oi,
                         change_in_open_interest=call_oi // 20,
                     ),
                 ),
                 OptionSnapshot(
-                    OptionContract(symbol, AssetClass.INDEX, expiry, strike, OptionType.PUT),
+                    OptionContract(
+                        symbol,
+                        AssetClass.INDEX if cfg["asset_class"] == "INDEX" else AssetClass.CRYPTO,
+                        expiry,
+                        strike,
+                        OptionType.PUT,
+                    ),
                     underlying,
                     OptionQuote(
-                        last=max(5.0, strike - underlying + 80),
+                        last=max(5.0, strike - underlying + underlying * 0.002),
                         volume=put_vol,
                         open_interest=put_oi,
                         change_in_open_interest=put_oi // 20,
@@ -90,8 +134,12 @@ class DemoMarketDataProvider(MarketDataProvider):
 
         return MarketSnapshot(
             symbol=symbol,
-            asset_class="INDEX",
+            asset_class=cfg["asset_class"],
             expiry=expiry,
             underlying_price=underlying,
             options=tuple(snapshots),
+            observed_at_epoch=time.time(),
+            provider_name="DemoMarketDataProvider",
+            live=False,
+            stale_after_seconds=30.0,
         )
