@@ -16,3 +16,6 @@ Safety:
 
 Verification must prove the full path, no-trade behavior, risk rejection, paper exit,
 journal creation, and broker_call_count == 0.
+
+
+Verification fix: the intermediate mark is 110, below the +75% take-profit threshold from the 105 entry ask. A later mark of 200 intentionally exercises expiry protection without changing TEST-018 risk logic.

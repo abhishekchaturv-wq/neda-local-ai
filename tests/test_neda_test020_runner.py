@@ -45,7 +45,7 @@ class TestEndToEndPaperRunner(unittest.TestCase):
         self.assertTrue(result.selection_reason)
         self.assertTrue(result.risk_reason)
 
-        exit_result = runner.mark_and_maybe_exit(200.0, 10)
+        exit_result = runner.mark_and_maybe_exit(110.0, 10)
         self.assertEqual(exit_result.action, "HOLD")
         self.assertEqual(len(runner.journal.completed()), 0)
 

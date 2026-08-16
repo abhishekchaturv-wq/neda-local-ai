@@ -39,3 +39,6 @@ paper BUY -> monitoring -> paper SELL-to-close -> TEST-019 journal -> feedback d
 
 ## Live trading status
 Live execution remains disabled. TEST-020 does not authorize broker connectivity or real-money trading.
+
+## TEST-020 Verification Fix
+The initial verification exposed a test-fixture inconsistency, not a trading-logic defect. The entry ask is 105 and TEST-018 take-profit is +75%, so a mark of 200 (+90.5%) must correctly trigger SELL-to-close. The intermediate monitoring mark was therefore changed to 110 so the intended sequence is BUY -> HOLD -> expiry-protection SELL-to-close. TEST-018 risk behavior was not weakened or changed.
