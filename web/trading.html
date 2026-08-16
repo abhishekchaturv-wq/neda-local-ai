@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>NEDA Trading Terminal V1</title>
+<style>
+:root{color-scheme:dark;--bg:#0d0f12;--panel:#15181d;--panel2:#1b2027;--text:#eef2f6;--muted:#8993a0;--line:#2a313a;--accent:#5ea7ff;--good:#55d18a;--warn:#f4bd5b}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:13px/1.45 -apple-system,BlinkMacSystemFont,"SF Pro Text",Inter,system-ui,sans-serif}
+header{height:64px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 24px}
+.brand{display:flex;gap:10px;align-items:center}.dot{width:9px;height:9px;background:var(--accent);border-radius:50%}
+h1{font-size:16px;margin:0}.sub{font-size:11px;color:var(--muted)}
+.badge{border:1px solid #705c2a;background:#2b2415;color:var(--warn);border-radius:7px;padding:5px 9px;font-size:11px}
+main{max-width:1200px;margin:auto;padding:22px}
+.top{display:grid;grid-template-columns:1.5fr 1fr 1fr 1fr;gap:12px;margin-bottom:14px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px}
+.label{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.value{font-size:22px;font-weight:650;margin-top:3px}.small{font-size:11px;color:var(--muted)}
+.grid{display:grid;grid-template-columns:2fr 1fr;gap:14px}
+h2{font-size:13px;margin:0 0 12px}
+table{width:100%;border-collapse:collapse}th,td{padding:8px 7px;border-bottom:1px solid var(--line);text-align:right}th{color:var(--muted);font-size:10px;font-weight:500}td{font-variant-numeric:tabular-nums}td.strike{text-align:center;font-weight:650}
+.atm{background:#24364b}
+.summary{display:grid;grid-template-columns:1fr 1fr;gap:10px}.metric{background:var(--panel2);border-radius:8px;padding:11px}
+.metric .value{font-size:18px}.wait{color:var(--warn)}
+.note{margin-top:12px;color:var(--muted);font-size:11px}
+footer{max-width:1200px;margin:auto;padding:0 22px 22px;color:var(--muted);font-size:10px}
+@media(max-width:800px){.top,.grid{grid-template-columns:1fr}.top{grid-template-columns:1fr 1fr}main{padding:12px}th,td{padding:6px 3px}}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand"><span class="dot"></span><div><h1>NEDA Trading Terminal</h1><div class="sub">Options Chain V1 · analytics only</div></div></div>
+  <div class="badge" id="mode">LOADING</div>
+</header>
+<main>
+  <section class="top">
+    <div class="card"><div class="label">Underlying</div><div class="value" id="symbol">—</div><div class="small" id="expiry">—</div></div>
+    <div class="card"><div class="label">Spot</div><div class="value" id="spot">—</div><div class="small">Index level</div></div>
+    <div class="card"><div class="label">ATM</div><div class="value" id="atm">—</div><div class="small">Nearest strike</div></div>
+    <div class="card"><div class="label">NEDA State</div><div class="value wait" id="state">WAIT</div><div class="small">No order execution</div></div>
+  </section>
+
+  <section class="grid">
+    <div class="card">
+      <h2>Options Chain</h2>
+      <table>
+        <thead><tr><th>Call OI</th><th>Call ΔOI</th><th>Call Vol</th><th>Strike</th><th>Put Vol</th><th>Put ΔOI</th><th>Put OI</th></tr></thead>
+        <tbody id="chain"></tbody>
+      </table>
+    </div>
+    <div>
+      <div class="card">
+        <h2>Chain Analytics</h2>
+        <div class="summary">
+          <div class="metric"><div class="label">PCR OI</div><div class="value" id="pcr">—</div></div>
+          <div class="metric"><div class="label">Max Pain</div><div class="value" id="maxpain">—</div></div>
+          <div class="metric"><div class="label">Call OI</div><div class="value" id="calloi">—</div></div>
+          <div class="metric"><div class="label">Put OI</div><div class="value" id="putoi">—</div></div>
+        </div>
+        <div class="note" id="reason"></div>
+      </div>
+      <div class="card" style="margin-top:14px">
+        <h2>Signal Layer</h2>
+        <div class="label">Current state</div>
+        <div class="value wait">WAIT</div>
+        <div class="note">Strategy scoring, IV/Greeks, TradingView signals and paper-trading controls will be added in later milestones.</div>
+      </div>
+    </div>
+  </section>
+</main>
+<footer>NEDA Trading UI V1 · deterministic demo data · connected to the existing Options Chain V1 analytics module.</footer>
+<script>
+const fmt=n=>n==null?"—":Number(n).toLocaleString("en-IN");
+const f2=n=>n==null?"—":Number(n).toFixed(2);
+async function load(){
+  const d=await fetch("/api/trading/chain").then(r=>r.json());
+  mode.textContent=d.mode; symbol.textContent=d.symbol; expiry.textContent="Expiry "+d.expiry;
+  spot.textContent=fmt(d.spot); atm.textContent=fmt(d.atm); state.textContent=d.signal.state;
+  pcr.textContent=f2(d.analytics.pcr_oi); maxpain.textContent=fmt(d.analytics.max_pain);
+  calloi.textContent=fmt(d.analytics.call_oi); putoi.textContent=fmt(d.analytics.put_oi);
+  reason.textContent=d.signal.reason;
+  chain.innerHTML=d.strikes.map(s=>`<tr class="${s.strike===d.atm?"atm":""}">
+    <td>${fmt(s.call_oi)}</td><td>${fmt(s.call_change_oi)}</td><td>${fmt(s.call_volume)}</td>
+    <td class="strike">${fmt(s.strike)}</td>
+    <td>${fmt(s.put_volume)}</td><td>${fmt(s.put_change_oi)}</td><td>${fmt(s.put_oi)}</td></tr>`).join("");
+}
+load().catch(e=>{document.getElementById("mode").textContent="API ERROR";console.error(e)});
+</script>
+</body>
+</html>
