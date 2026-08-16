@@ -194,20 +194,55 @@ def fetch_historical_btc(
 
     end_ms = int(time.time() * 1000)
     start_ms = end_ms - history_days * 24 * 60 * 60 * 1000
-    url = (
-        f"{BINANCE_URL}?symbol=BTCUSDT&interval={interval}"
-        f"&startTime={start_ms}&endTime={end_ms}&limit=1000"
-    )
-    raw = _json_get(url)
-    raw_hash = _sha256(raw)
 
-    try:
-        payload = json.loads(raw.decode("utf-8"))
-    except Exception as exc:
-        raise AutonomousLiveDataError("HISTORICAL_SOURCE_INVALID_JSON") from exc
+    # Binance limits a single kline response to 1000 records.  TEST-024
+    # therefore paginates backwards until the requested historical window is
+    # covered, rather than silently treating 1000 records as "365 days".
+    pages: list[bytes] = []
+    payload_rows: list[list] = []
+    cursor_end = end_ms
 
-    if not isinstance(payload, list) or not payload:
+    while cursor_end >= start_ms:
+        url = (
+            f"{BINANCE_URL}?symbol=BTCUSDT&interval={interval}"
+            f"&startTime={start_ms}&endTime={cursor_end}&limit=1000"
+        )
+        raw = _json_get(url)
+        pages.append(raw)
+
+        try:
+            payload = json.loads(raw.decode("utf-8"))
+        except Exception as exc:
+            raise AutonomousLiveDataError("HISTORICAL_SOURCE_INVALID_JSON") from exc
+
+        if not isinstance(payload, list):
+            raise AutonomousLiveDataError("HISTORICAL_SOURCE_INVALID_PAYLOAD")
+
+        if not payload:
+            break
+
+        payload_rows.extend(payload)
+        first_ts = int(payload[0][0])
+        last_ts = int(payload[-1][0])
+
+        if first_ts <= start_ms or last_ts <= start_ms or len(payload) < 1000:
+            break
+
+        next_cursor = first_ts - 1
+        if next_cursor >= cursor_end:
+            raise AutonomousLiveDataError("HISTORICAL_PAGINATION_STALLED")
+        cursor_end = next_cursor
+
+    if not payload_rows:
         raise AutonomousLiveDataError("HISTORICAL_SOURCE_EMPTY")
+
+    # De-duplicate page boundaries defensively, then enforce the requested
+    # time window and chronological ordering.
+    unique: dict[int, list] = {int(k[0]): k for k in payload_rows}
+    selected = [
+        unique[ts] for ts in sorted(unique)
+        if start_ms <= ts <= end_ms
+    ]
 
     rows = [
         BTCBar(
@@ -218,13 +253,21 @@ def fetch_historical_btc(
             close=float(k[4]),
             volume=float(k[5]),
         )
-        for k in payload
+        for k in selected
     ]
     validate_bars(rows)
 
+    # Hash the exact raw pages consumed, in request order, plus the canonical
+    # parsed dataset.  This makes the multi-page retrieval auditable.
+    raw_hash = _sha256(b"".join(pages))
+    source_url = (
+        f"{BINANCE_URL}?symbol=BTCUSDT&interval={interval}"
+        f"&startTime={start_ms}&endTime={end_ms}&paginated=true"
+    )
+
     provenance = HistoricalProvenance(
         source="Binance Public BTCUSDT Spot Klines",
-        source_url=url,
+        source_url=source_url,
         retrieved_at=datetime.now(timezone.utc).isoformat(),
         raw_sha256=raw_hash,
         dataset_sha256=canonical_dataset_hash(rows),
@@ -326,11 +369,20 @@ def run_session(
         if session.broker_call_count() != 0:
             raise RuntimeError("SAFETY FAILURE: broker call count is non-zero")
 
+        risk_rejected = result.order_status == "REJECTED" and bool(result.risk_reason)
+        final_action_reason = (
+            f"RISK_REJECTED:{result.risk_reason}"
+            if risk_rejected
+            else result.decision_reason
+        )
+
         record = {
             "test": "TEST-024",
             "cycle": cycle_no,
             "timestamp_utc": datetime.now(timezone.utc).isoformat(),
             "action": result.action,
+            "decision_stage": "RISK_REJECTED" if risk_rejected else result.action,
+            "final_action_reason": final_action_reason,
             "trade_id": result.trade_id,
             "symbol": result.symbol,
             "decision_reason": result.decision_reason,

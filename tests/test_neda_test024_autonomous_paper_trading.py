@@ -62,6 +62,52 @@ class TestTest024(unittest.TestCase):
         self.assertFalse(live.synthetic)
         self.assertEqual(live.option_count, 10)
 
+    def test_historical_fetch_paginates_beyond_binance_1000_limit(self):
+        import neda_test024_autonomous_paper_trading as mod
+
+        page2 = [
+            [1000, "60000", "60100", "59900", "60050", "10"],
+            [2000, "60050", "60200", "60000", "60150", "11"],
+        ]
+        page1 = [
+            [3000, "60150", "60300", "60100", "60250", "12"],
+            [4000, "60250", "60400", "60200", "60350", "13"],
+        ]
+
+        calls = []
+
+        def fake_get(url, timeout=20.0):
+            calls.append(url)
+            return json.dumps(page2 if len(calls) == 1 else page1).encode()
+
+        with patch.object(mod, "_json_get", side_effect=fake_get), \
+             patch.object(mod.time, "time", return_value=4.0):
+            rows, provenance = mod.fetch_historical_btc(history_days=7)
+
+        self.assertEqual([r.timestamp for r in rows], [1000, 2000, 3000, 4000])
+        self.assertEqual(provenance.record_count, 4)
+        self.assertTrue(provenance.source_url.endswith("&paginated=true"))
+        self.assertEqual(len(calls), 2)
+
+    def test_risk_rejection_has_explicit_audit_stage(self):
+        class Result:
+            action = "NO_TRADE"
+            trade_id = None
+            symbol = "BTC|2026-08-28|68000|PUT"
+            decision_reason = "QUALIFIED_BUYER_CANDIDATE"
+            entry_reason = "QUALIFIED_BUYER_CANDIDATE"
+            selection_reason = "DIRECTIONAL+LIQUIDITY+MONEYNESS+EXPIRY"
+            risk_reason = "PER_TRADE_PREMIUM_LIMIT_EXCEEDED"
+            order_status = "REJECTED"
+            fill_price = None
+
+        risk_rejected = Result.order_status == "REJECTED" and bool(Result.risk_reason)
+        self.assertTrue(risk_rejected)
+        self.assertEqual(
+            f"RISK_REJECTED:{Result.risk_reason}",
+            "RISK_REJECTED:PER_TRADE_PREMIUM_LIMIT_EXCEEDED",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
